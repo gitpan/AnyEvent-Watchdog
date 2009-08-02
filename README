@@ -1,0 +1,78 @@
+NAME
+    AnyEvent::Watchdog - generic watchdog/program restarter
+
+SYNOPSIS
+       # MUST be use'd as the very first thing in the main program
+       use AnyEvent::Watchdog;
+
+DESCRIPTION
+    This module implements a watchdog that can repeatedly fork the program
+    and thus effectively restart it - as soon as the module is use'd, it
+    will fork the program (if possible) and continue to run it normally in
+    the child, while the parent becomes a supervisor.
+
+    The child can then ask the supervisor to restart itself instead of
+    exiting, or ask the supervisor to restart it gracefully or forcefully.
+
+    NOTE: This module *MUST* be used as the first thing in the main program.
+    It will cause weird effects when used from another module, as perl does
+    not expect to be forked inside "BEGIN" blocks.
+
+RECIPES
+    Use AnyEvent::Watchdog solely as a convinient on-demand-restarter:
+
+       use AnyEvent::Watchdog;
+
+       # and whenever you wnat to restart (e.g. to upgrade code):
+       AnyEvent::Watchdog::restart;
+
+    Use AnyEvent::Watchdog to kill the program and exit when the event loop
+    fails to run for more than two minutes:
+
+       use AnyEvent::Watchdog qw(autorestart heartbeat=120);
+
+    Use AnyEvent::Watchdog to automatically restart the program when it
+    fails to handle events for longer than 5 minutes:
+
+       use AnyEvent::Watchdog qw(autorestart heartbeat=300);
+
+FUNCTIONS
+    The module supports the following functions:
+
+    AnyEvent::Watchdog::restart [$timeout]
+        Tells the supervisor to restart the process when it exits, or
+        forcefully after $timeout seconds (minimum 1, maximum 255, default
+        60).
+
+        Calls "exit 0" to exit the process cleanly.
+
+    AnyEvent::Watchdog::autorestart [$boolean]
+    use AnyEvent::Watchdog qw(autorestart[=$boolean])
+        Enables or disables autorestart (initially disabled, default for
+        $boolean is to enable): By default, the supervisor will exit if the
+        program exits or dies in any way. When enabling autorestart
+        behaviour, then the supervisor will try to restart the program after
+        it dies.
+
+        Note that the supervisor will never autorestart when the child died
+        with SIGINT or SIGTERM.
+
+    AnyEvent::Watchdog::heartbeat [$interval]
+    use AnyEvent::Watchdog qw(heartbeat[=$interval])
+        Tells the supervisor to automatically kill the program if it doesn't
+        react for $interval seconds (minium 1, maximum 255, default 60) ,
+        then installs an AnyEvent timer the sends a regular heartbeat to the
+        supervisor twice as often.
+
+        Exit behaviour isn't changed, so if you want a restart instead of an
+        exit, you have to call "autorestart".
+
+        Once enabled, the heartbeat cannot be switched off.
+
+SEE ALSO
+    AnyEvent.
+
+AUTHOR
+     Marc Lehmann <schmorp@schmorp.de>
+     http://home.schmorp.de/
+

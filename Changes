@@ -1,0 +1,9 @@
+Revision history for AnyEvent::Watchdog
+
+TODO: testsuite
+
+0.1 Sun Aug  2 17:49:10 CEST 2009
+	- first release, basically works for me(tm).
+
+0.0 Sun Aug  2 16:50:29 CEST 2009
+	- original version, leftover garbage from hacking on AnyEvent::MP.
