@@ -11,7 +11,7 @@
    },
    "generated_by" : "ExtUtils::MakeMaker version 6.50",
    "distribution_type" : "module",
-   "version" : "0.1",
+   "version" : "0.9",
    "name" : "AnyEvent-Watchdog",
    "author" : [],
    "license" : "unknown",

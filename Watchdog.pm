@@ -55,7 +55,7 @@ use common::sense;
 
 use Carp ();
 
-our $VERSION = '0.1';
+our $VERSION = '0.9';
 
 our $PID; # child pid
 our $ENABLED = 1;
@@ -120,8 +120,7 @@ sub server {
          sysread $P, my $interval, 1
             or last;
 
-         $heartbeat = ord $interval
-            unless defined $heartbeat;
+         $heartbeat = ord $interval;
 
       } elsif ($cmd eq chr 4) {
          # heartbeat
@@ -271,7 +270,8 @@ twice as often.
 Exit behaviour isn't changed, so if you want a restart instead of an exit,
 you have to call C<autorestart>.
 
-Once enabled, the heartbeat cannot be switched off.
+The heartbeat frequency can be changed as often as you want, an interval
+of C<0> disables the heartbeat check again.
 
 =cut
 
