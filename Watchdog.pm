@@ -4,7 +4,8 @@ AnyEvent::Watchdog - generic watchdog/program restarter
 
 =head1 SYNOPSIS
 
-   # MUST be use'd as the very first thing in the main program
+   # MUST be use'd as the very first thing in the main program,
+   # as it clones/forks the program before it returns.
    use AnyEvent::Watchdog;
 
 =head1 DESCRIPTION
@@ -23,28 +24,36 @@ perl does not expect to be forked inside C<BEGIN> blocks.
 
 =head1 RECIPES
 
-Use AnyEvent::Watchdog solely as a convinient on-demand-restarter:
+Use AnyEvent::Watchdog solely as a convenient on-demand-restarter:
 
    use AnyEvent::Watchdog;
 
-   # and whenever you wnat to restart (e.g. to upgrade code):
-   AnyEvent::Watchdog::restart;
+   # and whenever you want to restart (e.g. to upgrade code):
+   use AnyEvent::Watchdog::Util;
+   AnyEvent::Watchdog::Util::restart;
 
 Use AnyEvent::Watchdog to kill the program and exit when the event loop
 fails to run for more than two minutes:
 
-   use AnyEvent::Watchdog qw(autorestart heartbeat=120);
+   use AnyEvent::Watchdog autorestart => 1, heartbeat => 120;
 
-Use AnyEvent::Watchdog to automatically restart the program
-when it fails to handle events for longer than 5 minutes:
+Use AnyEvent::Watchdog to automatically kill (but not restart) the program when it fails
+to handle events for longer than 5 minutes:
 
-   use AnyEvent::Watchdog qw(autorestart heartbeat=300);
+   use AnyEvent::Watchdog heartbeat => 300;
 
-=head1 FUNCTIONS
+=head1 VARIABLES/FUNCTIONS
 
-The module supports the following functions:
+This module is controlled via the L<AnyEvent::Watchdog::Util> module:
 
-=over 4
+   use AnyEvent::Watchdog::Util;
+
+   # attempt restart
+   AnyEvent::Watchdog::Util::restart;
+
+   # check if it is running
+   AnyEvent::Watchdog::Util::enabled
+      or croak "not running under watchdog!";
 
 =cut
 
@@ -55,12 +64,11 @@ use common::sense;
 
 use Carp ();
 
-our $VERSION = '0.9';
+our $VERSION = '1.0';
 
 our $PID; # child pid
-our $ENABLED = 1;
+our $ENABLED = 0; # also version
 our $AUTORESTART; # actually exit
-our $HEARTBEAT;
 our ($P, $C);
 
 sub poll($) {
@@ -166,7 +174,7 @@ our %SEEKPOS;
 # due to bugs in perl, try to remember file offsets for all fds, and restore them later
 # (the parser otherwise exhausts the input files)
 
-# this causes perlio to flush it's handles internally, so
+# this causes perlio to flush its handles internally, so
 # seek offsets become correct.
 exec "."; # toi toi toi
 #{
@@ -180,7 +188,7 @@ exec "."; # toi toi toi
 #   }
 #}
 
-# now records all fd positions
+# now record "all" fd positions, assuming 1023 is more than enough.
 for (0 .. 1023) {
    open my $fh, "<&$_" or next;
    $SEEKPOS{$_} = (sysseek $fh, 0, 1 or next);
@@ -205,9 +213,13 @@ while () {
       warn "AnyEvent::Watchdog: '$!', retrying in one second...\n";
       sleep 1;
    } elsif ($PID) {
+      # parent code
       close $C;
       server;
    } else {
+      # child code
+      $ENABLED = 1; # also version
+
       # restore seek offsets
       while (my ($k, $v) = each %SEEKPOS) {
          open my $fh, "<&$k" or next;
@@ -220,95 +232,31 @@ while () {
    }
 }
 
-=item AnyEvent::Watchdog::restart [$timeout]
-
-Tells the supervisor to restart the process when it exits, or forcefully
-after C<$timeout> seconds (minimum 1, maximum 255, default 60).
-
-Calls C<exit 0> to exit the process cleanly.
-
-=cut
-
-sub restart(;$) {
-   my ($timeout) = @_;
-
-   $timeout =  60 unless defined $timeout;
-   $timeout =   1 if $timeout <   1;
-   $timeout = 255 if $timeout > 255;
-
-   syswrite $C, "\x01\x02" . chr $timeout;
-   exit 0;
-}
-
-=item AnyEvent::Watchdog::autorestart [$boolean]
-
-=item use AnyEvent::Watchdog qw(autorestart[=$boolean])
-
-Enables or disables autorestart (initially disabled, default for
-C<$boolean> is to enable): By default, the supervisor will exit if the
-program exits or dies in any way. When enabling autorestart behaviour,
-then the supervisor will try to restart the program after it dies.
-
-Note that the supervisor will never autorestart when the child died with
-SIGINT or SIGTERM.
-
-=cut
-
-sub autorestart(;$) {
-   syswrite $C, !@_ || $_[0] ? "\x01" : "\x00";
-}
-
-=item AnyEvent::Watchdog::heartbeat [$interval]
-
-=item use AnyEvent::Watchdog qw(heartbeat[=$interval])
-
-Tells the supervisor to automatically kill the program if it doesn't
-react for C<$interval> seconds (minium 1, maximum 255, default 60) , then
-installs an AnyEvent timer the sends a regular heartbeat to the supervisor
-twice as often.
-
-Exit behaviour isn't changed, so if you want a restart instead of an exit,
-you have to call C<autorestart>.
-
-The heartbeat frequency can be changed as often as you want, an interval
-of C<0> disables the heartbeat check again.
-
-=cut
-
-sub heartbeat(;$) {
-   my ($interval) = @_;
-
-   $interval =  60 unless defined $interval;
-   $interval =   1 if $interval <   1;
-   $interval = 255 if $interval > 255;
-
-   syswrite $C, "\x03" . chr $interval;
-
-   require AE;
-   $HEARTBEAT = AE::timer (0, $interval * 0.5, sub {
-      syswrite $C, "\x04";
-   });
-}
-
 sub import {
    shift;
 
-   for (@_) {
-      if (/^autorestart(?:=(.*))?$/) {
-         autorestart defined $1 ? $1 : 1;
-      } elsif (/^heartbeat(?:=(.*))?$/) {
-         heartbeat $1;
+   while (@_) {
+      my $k = shift;
+
+      require AnyEvent::Watchdog::Util;
+
+      if ($k eq "autorestart") {
+         AnyEvent::Watchdog::Util::autorestart (! ! shift);
+      } elsif ($k eq "heartbeat") {
+         AnyEvent::Watchdog::Util::heartbeat (shift || 60);
       } else {
          Carp::croak "AnyEvent::Watchdog: '$_' is not a valid import argument";
       }
    }
 }
 
-=back
+# used by AnyEvent::Watchdog::Util.
+our $end;
+END { $end && &$end }
 
 =head1 SEE ALSO
 
-L<AnyEvent>.
+L<AnyEvent::Watchdg::Util>, L<AnyEvent>.
 
 =head1 AUTHOR
 
